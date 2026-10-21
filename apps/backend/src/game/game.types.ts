@@ -144,6 +144,12 @@ export interface PlayerRecord {
 export interface PlayerScore {
   score: number;
   streak: number;
+  /**
+   * Cumulative answer time (ms), kept as answers come in (§5 tie-break). A
+   * question not answered counts for its full `timeLimitS`, added once the
+   * question is revealed (#259) — not rewarding silence over a slow answer.
+   */
+  totalAnswerMs: number;
 }
 
 /**

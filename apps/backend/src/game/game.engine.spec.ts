@@ -186,7 +186,7 @@ describe('GameEngine (characterization)', () => {
     await redis.hset(gameKeys.room(pin), toHash(roomFields));
     await redis.hset(gameKeys.game(gameId), toHash(gameFields));
     await redis.set(gameKeys.snapshot(gameId), JSON.stringify(snapshot));
-    const zero: PlayerScore = { score: 0, streak: 0 };
+    const zero: PlayerScore = { score: 0, streak: 0, totalAnswerMs: 0 };
     for (const [id, rec] of Object.entries(players)) {
       await redis.hset(gameKeys.players(pin), id, JSON.stringify(rec));
       await redis.hset(gameKeys.scores(gameId), id, JSON.stringify(zero));
@@ -545,9 +545,9 @@ describe('GameEngine (characterization)', () => {
       await revealed();
 
       expect(await Promise.all(['p1', 'p2', 'p3'].map(scoreOf))).toEqual([
-        { score: 1000, streak: 1 },
-        { score: 750, streak: 0 },
-        { score: 500, streak: 0 },
+        { score: 1000, streak: 1, totalAnswerMs: 1 },
+        { score: 750, streak: 0, totalAnswerMs: 1 },
+        { score: 500, streak: 0, totalAnswerMs: 1 },
       ]);
       const reveal = ann.of<{
         closest: { nickname: string; rank: number }[];
@@ -559,6 +559,25 @@ describe('GameEngine (characterization)', () => {
         ['Cid', 3],
       ]);
       expect(reveal.yourResult).toMatchObject({ correct: true, points: 1000, closestRank: 1 });
+    });
+
+    it('ranks a late-but-answered tie ahead of one left unanswered, by cumulative time (#259)', async () => {
+      const t0 = await startedAt(snapshotOf([question({ timeLimitS: 20 })]), {
+        p1: player('Ann', { joinedAt: 1 }), // joined first, never answers
+        p2: player('Bob', { joinedAt: 2 }), // joined later, answers (wrong) fast
+      });
+      const wrong = (await game.getSnapshot(gameId))!.questions[0].options[1].id;
+      await engine.submit(pin, 'p2', 0, wrong, t0 + 1);
+      await engine.reveal(pin, HOST);
+
+      // Both score 0 — Ann never answered, Bob answered wrong — so the unanswered
+      // question is what breaks the tie: it counts at its full time limit (§5, #259).
+      expect((await scoreOf('p1')).totalAnswerMs).toBe(20_000);
+      expect((await scoreOf('p2')).totalAnswerMs).toBe(1);
+
+      const ranked = await game.rankedPlayers(pin, gameId);
+      // Bob ranks ahead despite joining later: time breaks the tie before arrival does.
+      expect(ranked.map((p) => p.nickname)).toEqual(['Bob', 'Ann']);
     });
   });
 
@@ -902,7 +921,7 @@ describe('GameEngine (characterization)', () => {
       await redis.del(...(await redis.keys(`*${previous}*`)));
       expect(m.id).not.toBe(previous);
       expect([m.state, m.quizId, m.totalQuestions]).toEqual(['LOBBY', '', 0]);
-      expect(await game.getScore(m.id, 'p1')).toEqual({ score: 0, streak: 0 });
+      expect(await game.getScore(m.id, 'p1')).toEqual({ score: 0, streak: 0, totalAnswerMs: 0 });
       expect(archive.archive).not.toHaveBeenCalled();
       expect((await game.standings(pin)).quizzesPlayed).toBe(0); // nothing of it kept
       // Nothing to start until a quiz is picked; the next quiz is picked there only.

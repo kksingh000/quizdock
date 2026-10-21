@@ -52,6 +52,7 @@ import type {
   AnswerRecord,
   GameMeta,
   PlayerRecord,
+  PlayerScore,
   QuizSnapshot,
   RoomSounds,
   SnapshotQuestion,
@@ -947,6 +948,9 @@ export class GameEngine {
     const question = snapshot.questions[index];
     const records = await this.game.answers(ref.id, index);
     const common = await this.revealCommon(pin, question, records);
+    // Didn't answer this question: counted at the full time limit (§5, #259) before
+    // ranking — once per question, this path runs exactly once (reveal lock, §above).
+    await this.applyUnansweredPenalty(ref.id, question, records);
 
     const ranking = await this.ranking(ref);
 
@@ -960,6 +964,30 @@ export class GameEngine {
     // What comes next, fetched by every device while the leaderboard is up.
     await this.emitPreload(ref, snapshot, firstStepOf(snapshot, index + 1));
     await this.broadcastReadiness(pin);
+  }
+
+  /**
+   * Players of the game who left this question unanswered: their cumulative
+   * answer time (§5 tie-break, #259) grows by its full `timeLimitS`, so staying
+   * silent never ranks ahead of a slow-but-answered question.
+   */
+  private async applyUnansweredPenalty(
+    gameId: GameId,
+    question: SnapshotQuestion,
+    records: Map<string, AnswerRecord>,
+  ): Promise<void> {
+    const scores = await this.redis.hgetall(gameKeys.scores(gameId));
+    const penaltyMs = question.timeLimitS * 1000;
+    const pipe = this.redis.multi();
+    let any = false;
+    for (const [playerId, json] of Object.entries(scores)) {
+      if (records.has(playerId)) continue;
+      const scored = JSON.parse(json) as PlayerScore;
+      scored.totalAnswerMs = (scored.totalAnswerMs ?? 0) + penaltyMs;
+      pipe.hset(gameKeys.scores(gameId), playerId, JSON.stringify(scored));
+      any = true;
+    }
+    if (any) await pipe.exec();
   }
 
   /** Common reveal + the proximity ranking of a numeric `closest` question (with nicknames). */
@@ -2405,6 +2433,7 @@ export class GameEngine {
     // Applique le score (read-modify-write sûr : 1 seul socket par joueur).
     scored.score += score.points;
     scored.streak = score.newStreak;
+    scored.totalAnswerMs = (scored.totalAnswerMs ?? 0) + tMs;
     await this.redis.hset(gameKeys.scores(meta.id), playerId, JSON.stringify(scored));
 
     await this.countAnswers(refOf(pin, meta), questionIndex);

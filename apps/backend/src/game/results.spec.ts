@@ -19,7 +19,8 @@ const record = (nickname: string, joinedAt: number) =>
     joinedAt,
     latencyMs: 0,
   });
-const score = (points: number) => JSON.stringify({ score: points, streak: 0 });
+const score = (points: number, totalAnswerMs = 0) =>
+  JSON.stringify({ score: points, streak: 0, totalAnswerMs });
 
 describe('results', () => {
   const players = {
@@ -40,6 +41,18 @@ describe('results', () => {
       ['Cid', 3],
     ]);
     expect(topRows(ranking.ranked, 2)).toHaveLength(2);
+  });
+
+  it('on a tied score, ranks by cumulative answer time before arrival (#259)', () => {
+    // Ann joined first but answered slower overall; Bob joined later but faster.
+    const players259 = { a: record('Ann', 1), b: record('Bob', 2), c: record('Cid', 3) };
+    const scores259 = {
+      a: score(500, 4000),
+      b: score(500, 1000),
+      c: score(500, 1000), // same score and time as Bob: arrival breaks this one
+    };
+    const ranked = rankPlayers(players259, scores259);
+    expect(ranked.map((p) => p.nickname)).toEqual(['Bob', 'Cid', 'Ann']);
   });
 
   it('adds its own line to a player, none to a screen', () => {

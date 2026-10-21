@@ -64,7 +64,11 @@ const NICKNAME_HOMONYM_MAX = 20;
 const AVATAR_SEED_MAX = 64;
 
 /** A player's score at the start of a game. */
-const ZERO_SCORE = JSON.stringify({ score: 0, streak: 0 } satisfies PlayerScore);
+const ZERO_SCORE = JSON.stringify({
+  score: 0,
+  streak: 0,
+  totalAnswerMs: 0,
+} satisfies PlayerScore);
 
 /*
  * The two moves that must see the same room: a player joining and a quiz

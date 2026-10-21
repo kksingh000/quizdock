@@ -25,8 +25,9 @@ export interface Ranking {
 }
 
 /**
- * The players of a game, by score then arrival (§5): those of the room (`players`,
- * JSON records) who play it (`scores`, JSON scores), with what they scored in it.
+ * The players of a game, by score, then cumulative answer time, then arrival
+ * (§5, RG-09): those of the room (`players`, JSON records) who play it
+ * (`scores`, JSON scores), with what they scored in it.
  */
 export function rankPlayers(
   players: Record<string, string>,
@@ -39,7 +40,12 @@ export function rankPlayers(
       ...(JSON.parse(players[id]) as PlayerRecord),
       ...(JSON.parse(score) as PlayerScore),
     }))
-    .sort((a, b) => b.score - a.score || a.joinedAt - b.joinedAt);
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        (a.totalAnswerMs ?? 0) - (b.totalAnswerMs ?? 0) ||
+        a.joinedAt - b.joinedAt,
+    );
 }
 
 export function rankingOf(ranked: RankedPlayer[]): Ranking {

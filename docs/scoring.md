@@ -35,3 +35,11 @@ Exact (within the tolerance) = full base points; otherwise 100 / 75 / 50 /
 30 % by rank, 10 % beyond the fourth. No speed bonus — precision is the
 game. The reveal shows the ranking (nickname, value, distance, points) and
 each participant sees their own rank and distance.
+
+## Ties on the leaderboard and podium
+
+Same final score, broken in order by: the lower cumulative answer time
+(a question left unanswered counts for its full time limit — skipping one
+never ranks ahead of a slow but complete run), then by whoever joined the
+game first. The room's own standings (across quizzes) break ties by arrival
+only, not by answer time.
